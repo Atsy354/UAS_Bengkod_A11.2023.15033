@@ -2,151 +2,202 @@ import streamlit as st
 import pandas as pd
 import joblib
 
-# Load model
-model = joblib.load(
-    'model_churn.pkl'
+# ======================================
+# KONFIGURASI HALAMAN
+# ======================================
+
+st.set_page_config(
+    page_title="Customer Churn Prediction",
+    page_icon="📊",
+    layout="centered"
 )
 
-# Judul
-st.title(
-    'Aplikasi Prediksi Customer Churn'
-)
+# ======================================
+# LOAD MODEL
+# ======================================
+
+try:
+    model = joblib.load("model_churn.pkl")
+except Exception as e:
+    st.error(f"Gagal memuat model: {e}")
+    st.stop()
+
+# ======================================
+# HEADER
+# ======================================
+
+st.title("📊 Customer Churn Prediction")
 
 st.write(
-    'Upload file CSV untuk melakukan prediksi customer churn'
+    """
+    Masukkan data pelanggan di bawah ini untuk mengetahui apakah pelanggan
+    diprediksi **Churn (1)** atau **Tidak Churn (0)**.
+    """
 )
 
-# Upload file
-uploaded = st.file_uploader(
-    "Upload CSV",
-    type=['csv']
-)
+st.markdown("---")
 
-if uploaded:
+# ======================================
+# FORM INPUT
+# ======================================
 
-    # Baca data
-    data = pd.read_csv(
-        uploaded
+st.subheader("Masukkan Data Pelanggan")
+
+col1, col2 = st.columns(2)
+
+with col1:
+
+    total_spent = st.number_input(
+        "💰 Total Spent",
+        min_value=0.0,
+        value=0.0,
+        step=100.0,
+        format="%.0f",
+        help="Total pengeluaran pelanggan."
     )
 
-    st.subheader(
-        "Preview Data"
+    support_tickets = st.number_input(
+        "🎫 Support Tickets",
+        min_value=0,
+        value=0,
+        step=1,
+        help="Jumlah tiket keluhan pelanggan."
     )
 
-    st.dataframe(
-        data.head()
+    pages_per_session = st.number_input(
+        "🌐 Pages Per Session",
+        min_value=0.0,
+        value=0.0,
+        step=1.0,
+        format="%.1f",
+        help="Rata-rata halaman yang dikunjungi."
     )
 
-    if st.button(
-        "Prediksi"
-    ):
+with col2:
 
-        try:
+    satisfaction_score = st.slider(
+        "⭐ Satisfaction Score",
+        min_value=1,
+        max_value=10,
+        value=5,
+        help="Nilai kepuasan pelanggan."
+    )
 
-            # Copy data agar data asli tidak berubah
-            predict_data = data.copy()
+    marketing_spend_per_user = st.number_input(
+        "📢 Marketing Spend Per User",
+        min_value=0.0,
+        value=0.0,
+        step=50.0,
+        format="%.0f",
+        help="Biaya pemasaran untuk pelanggan."
+    )
 
-            # Hapus target jika ada
-            if 'churn' in predict_data.columns:
-                predict_data = predict_data.drop(
-                    columns=['churn']
-                )
+st.markdown("---")
 
-            # Feature engineering tanggal
-            if 'signup_date' in predict_data.columns:
+# ======================================
+# TOMBOL PREDIKSI
+# ======================================
 
-                predict_data['signup_date'] = (
-                    pd.to_datetime(
-                        predict_data['signup_date'],
-                        errors='coerce'
-                    )
-                )
+if st.button("🔍 Prediksi", use_container_width=True):
 
-                predict_data['signup_year'] = (
-                    predict_data['signup_date']
-                    .dt.year
-                )
+    input_data = pd.DataFrame({
 
-            if 'last_purchase_date' in predict_data.columns:
+        "total_spent":[total_spent],
 
-                predict_data['last_purchase_date'] = (
-                    pd.to_datetime(
-                        predict_data['last_purchase_date'],
-                        errors='coerce'
-                    )
-                )
+        "satisfaction_score":[satisfaction_score],
 
-                predict_data['last_purchase_year'] = (
-                    predict_data[
-                        'last_purchase_date'
-                    ].dt.year
-                )
+        "support_tickets":[support_tickets],
 
-            # Hapus kolom tanggal lama
-            predict_data = predict_data.drop(
-                columns=[
-                    'signup_date',
-                    'last_purchase_date'
-                ],
-                errors='ignore'
+        "marketing_spend_per_user":[marketing_spend_per_user],
+
+        "pages_per_session":[pages_per_session]
+
+    })
+
+    prediction = int(
+        model.predict(input_data)[0]
+    )
+
+    confidence = None
+
+    if hasattr(model, "predict_proba"):
+
+        probability = model.predict_proba(input_data)
+
+        confidence = probability.max() * 100
+
+    st.markdown("---")
+
+    st.subheader("📈 Hasil Prediksi")
+
+    colA, colB = st.columns(2)
+
+    with colA:
+
+        st.metric(
+            "Prediction",
+            prediction
+        )
+
+    with colB:
+
+        if confidence is not None:
+
+            st.metric(
+                "Confidence",
+                f"{confidence:.2f}%"
             )
 
-            # Prediksi
-            pred = model.predict(
-                predict_data
-            )
+    st.markdown("### Interpretasi")
 
-            # Simpan hasil
-            data['Prediction'] = pred
+    if prediction == 0:
 
-            # Label lebih jelas
-            data['Prediction'] = (
-                data[
-                    'Prediction'
-                ]
-                .map({
-                    0: 'Tidak Churn',
-                    1: 'Churn'
-                })
-            )
+        st.success(
+            "✅ Pelanggan diprediksi **Tidak Churn (0)**."
+        )
 
-            st.success(
-                "Prediksi berhasil"
-            )
+        st.info(
+            "Pelanggan diperkirakan tetap menggunakan layanan sehingga risiko churn relatif rendah."
+        )
 
-            st.subheader(
-                "Hasil Prediksi"
-            )
+    else:
 
-            st.dataframe(
-                data
-            )
+        st.error(
+            "⚠️ Pelanggan diprediksi **Churn (1)**."
+        )
 
-            # Download
-            csv = (
-                data
-                .to_csv(
-                    index=False
-                )
-                .encode(
-                    'utf-8'
-                )
-            )
+        st.warning(
+            "Pelanggan diperkirakan akan berhenti menggunakan layanan sehingga perusahaan perlu melakukan strategi retensi."
+        )
 
-            st.download_button(
+    st.markdown("---")
 
-                "Download Hasil",
+    with st.expander("📖 Keterangan Label"):
 
-                csv,
+        st.write("""
+        **0 = Tidak Churn**
 
-                "hasil_prediksi.csv",
+        Pelanggan diprediksi tetap menggunakan layanan.
 
-                "text/csv"
+        **1 = Churn**
 
-            )
+        Pelanggan diprediksi berhenti menggunakan layanan.
+        """)
 
-        except Exception as e:
+# ======================================
+# FOOTER
+# ======================================
 
-            st.error(
-                f"Terjadi error: {e}"
-            )
+st.markdown("---")
+
+st.caption("""
+Model Machine Learning : Random Forest Classifier
+
+Jumlah Feature : 5
+
+Target : Customer Churn
+
+0 = Tidak Churn
+
+1 = Churn
+""")
